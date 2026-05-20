@@ -1,0 +1,2 @@
+#!/system/bin/sh
+echo "Test binary executed successfully from $(pwd)"
