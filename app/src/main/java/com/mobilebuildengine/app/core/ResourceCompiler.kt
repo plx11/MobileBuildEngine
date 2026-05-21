@@ -1,51 +1,54 @@
 package com.mobilebuildengine.app.core
 
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Android 資源編譯與合併處理器
- * 處理 AAPT2 資源衝突與編譯流水線
+ * 完整實作的 AAPT2 資源編譯器，執行真實的二進位調用
  */
 class ResourceCompiler(
     private val toolchain: ToolchainManager,
     private val workingDir: File
 ) {
 
-    fun compileResources(resDir: File, assetsDir: File, manifest: File, outputApk: File): Boolean {
+    fun compileResources(resDir: File, manifest: File, outputApk: File, androidJar: File): Boolean {
         val aapt2 = toolchain.getBinaryPath("aapt2")
+        val zipalign = toolchain.getBinaryPath("zipalign")
         
-        // 狀態標記：編譯 -> 連結
-        val compiledDir = File(workingDir, "build/compiled_res")
-        if (!compiledDir.exists()) compiledDir.mkdirs()
+        val flatDir = File(workingDir, "build/flat")
+        if (!flatDir.exists()) flatDir.mkdirs()
 
-        // 1. AAPT2 Compile
+        // 1. AAPT2 Compile: 將 res 編譯為 .flat 檔案
         val compileProcess = ProcessBuilder(
-            aapt2, "compile", "--dir", resDir.absolutePath, "-o", compiledDir.absolutePath
-        ).directory(workingDir).start()
+            aapt2, "compile", "--dir", resDir.absolutePath, "-o", flatDir.absolutePath
+        ).directory(workingDir).redirectErrorStream(true).start()
         
         if (compileProcess.waitFor() != 0) return false
 
-        // 2. AAPT2 Link (資源合併)
+        // 2. AAPT2 Link: 合併資源並產生 APK
+        val flatFiles = flatDir.listFiles { _, name -> name.endsWith(".flat") }?.map { it.absolutePath } ?: emptyList()
         val linkCmd = mutableListOf(
             aapt2, "link",
             "--manifest", manifest.absolutePath,
             "-o", outputApk.absolutePath,
-            "-I", toolchain.getBinaryPath("android.jar") // 必須引用系統 jar
+            "-I", androidJar.absolutePath
         )
-        // 將 compiledDir 下的所有 .flat 檔案加入連結指令
-        compiledDir.walk().filter { it.extension == "flat" }.forEach {
-            linkCmd.add(it.absolutePath)
+        linkCmd.addAll(flatFiles)
+
+        val linkProcess = ProcessBuilder(linkCmd).directory(workingDir).redirectErrorStream(true).start()
+        val linkOutput = linkProcess.inputStream.bufferedReader().use { it.readText() }
+        if (!(linkProcess.waitFor(2, TimeUnit.MINUTES) && linkProcess.exitValue() == 0)) {
+            System.err.println("AAPT2 Link Error: $linkOutput")
+            return false
         }
 
-        val linkProcess = ProcessBuilder(linkCmd).directory(workingDir).start()
-        if (!(linkProcess.waitFor(5, TimeUnit.MINUTES) && linkProcess.exitValue() == 0)) return false
-
-        // 3. Zipalign 對齊
-        val zipalign = tool.getBinaryPath("zipalign")
+        // 3. Zipalign: 對齊
         val alignedApk = File(outputApk.parentFile, "aligned_${outputApk.name}")
-        val alignProcess = ProcessBuilder(zipalign, "-p", "-f", "4", outputApk.absolutePath, alignedApk.absolutePath).start()
+        val alignProcess = ProcessBuilder(
+            zipalign, "-p", "-f", "4", outputApk.absolutePath, alignedApk.absolutePath
+        ).directory(workingDir).redirectErrorStream(true).start()
         
-        return alignProcess.waitFor() == 0
+        return alignProcess.waitFor() == 0 && alignedApk.renameTo(outputApk)
     }
 }

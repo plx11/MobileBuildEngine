@@ -2,17 +2,20 @@ package com.mobilebuildengine.app.core
 
 import org.eclipse.jdt.internal.compiler.batch.Main
 import java.io.PrintWriter
+import java.io.File
 
 /**
- * 整合 ECJ 編譯器，實現 Android 沙箱內的 Java 轉 Bytecode
+ * 升級版 Java 編譯引擎：支援 Java 17，滿足現代 Android SDK 編譯需求
  */
 class JavaCompilerEngine {
-    fun compile(srcDir: java.io.File, classDir: java.io.File, classpath: String): Boolean {
-        // ECJ 是 Eclipse Java Compiler，不需要完整 JDK 即可將 .java 編譯為 .class
+    fun compile(srcDir: File, classDir: File, classpath: String): Boolean {
+        // -17 指定 Java 17 標準，滿足現代 Android SDK (compileSdk 35+) 的編譯需求
         val args = arrayOf(
             "-d", classDir.absolutePath,
             "-cp", classpath,
-            "-1.8", // 指定 Java 8 語言標準
+            "-17", 
+            "-preserveState",
+            "-warn:none",
             srcDir.absolutePath
         )
         return Main.compile(args, PrintWriter(System.out), PrintWriter(System.err))
