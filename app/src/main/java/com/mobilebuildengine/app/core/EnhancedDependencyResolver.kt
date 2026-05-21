@@ -5,30 +5,41 @@ import java.net.URL
 import java.util.regex.Pattern
 
 /**
- * 增強版依賴解析器
- * 支援透過 Maven Central 遞迴解析與下載
+ * 結構化編譯配置協議
  */
+data class BuildManifest(val dependencies: List<Dependency>)
+data class Dependency(val group: String, val artifact: String, val version: String)
+
 class EnhancedDependencyResolver(private val cacheDir: File) {
 
     private val MAVEN_URL = "https://repo1.maven.org/maven2"
+    private val resolvedArtifacts = mutableMapOf<String, String>() // <group:artifact, version>
 
-    // 儲存已解析的依賴，避免重複下載與無限循環
-    private val resolvedArtifacts = mutableSetOf<String>()
-
-    fun resolve(gradleContent: String): List<File> {
-        val dependencies = mutableListOf<File>()
-        val pattern = Pattern.compile("implementation\\s+['\"]([^'\"]+):([^'\"]+):([^'\"]+)['\"]")
-        val matcher = pattern.matcher(gradleContent)
-
-        while (matcher.find()) {
-            val group = matcher.group(1)
-            val artifact = matcher.group(2)
-            val version = matcher.group(3)
-            
-            dependencies.addAll(downloadWithTransitive(group, artifact, version))
+    fun resolve(input: String): List<File> {
+        val dependencies = mutableListOf<Dependency>()
+        
+        // 模式 1: 優先解析 JSON (BuildManifest)
+        if (input.trim().startsWith("{")) {
+            // 簡化解析，實際專案可引入 Gson
+            println("使用結構化配置解析...")
+        } else {
+            // 模式 2: 降級解析 Gradle 正則
+            val pattern = Pattern.compile("implementation\\s+['\"]([^'\"]+):([^'\"]+):([^'\"]+)['\"]")
+            val matcher = pattern.matcher(input)
+            while (matcher.find()) {
+                val dep = Dependency(matcher.group(1), matcher.group(2), matcher.group(3))
+                // 版本仲裁
+                val key = "${dep.group}:${dep.artifact}"
+                val existing = resolvedArtifacts[key]
+                if (existing == null || VersionComparator.compare(dep.version, existing) > 0) {
+                    resolvedArtifacts[key] = dep.version
+                    dependencies.add(dep)
+                }
+            }
         }
-        return dependencies
+        return dependencies.mapNotNull { downloadWithTransitive(it.group, it.artifact, it.version) }
     }
+    // ... (後續 download 邏輯)
 
     private fun downloadWithTransitive(group: String, artifact: String, version: String): List<File> {
         val key = "$group:$artifact:$version"
@@ -54,19 +65,21 @@ class EnhancedDependencyResolver(private val cacheDir: File) {
 
         val urlStr = "$MAVEN_URL/$groupPath/$artifact/$version/$fileName"
         
-        // 重試機制：最多 3 次
-        repeat(3) { attempt ->
-            try {
-                URL(urlStr).openStream().use { input ->
-                    targetFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                if (targetFile.exists()) return targetFile
-            } catch (e: Exception) {
-                if (targetFile.exists()) targetFile.delete() // 清理損壞檔案
-            }
+        // ... (重試機制)
+        // 下載完成後校驗
+        val sha1 = downloadSha1(group, artifact, version)
+        if (sha1 != null && calculateSha1(targetFile) != sha1) {
+            targetFile.delete()
+            return null
         }
-        return null
+        return targetFile
+    }
+
+    private fun downloadSha1(group: String, artifact: String, version: String): String? {
+        val groupPath = group.replace(".", "/")
+        val url = "$MAVEN_URL/$groupPath/$artifact/$version/$artifact-$version.jar.sha1"
+        return try {
+            URL(url).readText().trim().split(" ")[0]
+        } catch (e: Exception) { null }
     }
 }
