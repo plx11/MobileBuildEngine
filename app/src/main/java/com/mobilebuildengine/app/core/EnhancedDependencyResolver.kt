@@ -52,16 +52,21 @@ class EnhancedDependencyResolver(private val cacheDir: File) {
         
         if (targetFile.exists()) return targetFile
 
-        return try {
-            val url = "$MAVEN_URL/$groupPath/$artifact/$version/$fileName"
-            URL(url).openStream().use { input ->
-                targetFile.outputStream().use { output ->
-                    input.copyTo(output)
+        val urlStr = "$MAVEN_URL/$groupPath/$artifact/$version/$fileName"
+        
+        // 重試機制：最多 3 次
+        repeat(3) { attempt ->
+            try {
+                URL(urlStr).openStream().use { input ->
+                    targetFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
                 }
+                if (targetFile.exists()) return targetFile
+            } catch (e: Exception) {
+                if (targetFile.exists()) targetFile.delete() // 清理損壞檔案
             }
-            targetFile
-        } catch (e: Exception) {
-            null
         }
+        return null
     }
 }
