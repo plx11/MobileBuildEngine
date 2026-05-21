@@ -15,15 +15,23 @@ class MavenDependencyManager(private val cacheDir: File) {
     fun getFullClasspath(rootPom: File): List<File> {
         val queue = mutableListOf(rootPom)
         val allJars = mutableListOf<File>()
+        val processedPoms = mutableSetOf<String>()
 
         while (queue.isNotEmpty()) {
             val pom = queue.removeAt(0)
+            if (!pom.exists() || processedPoms.contains(pom.absolutePath)) continue
+            processedPoms.add(pom.absolutePath)
+
             val deps = parsePom(pom)
             for (dep in deps) {
                 val jar = download(dep)
                 if (jar != null && !allJars.contains(jar)) {
                     allJars.add(jar)
-                    // 這裡應查找該 jar 對應的 pom，將其加入 queue 以實現遞迴
+                    // 尋找對應的 POM 以實現遞迴依賴解析
+                    val childPom = File(cacheDir, "${dep.artifactId}-${dep.version}.pom")
+                    if (childPom.exists()) {
+                        queue.add(childPom)
+                    }
                 }
             }
         }
@@ -37,14 +45,13 @@ class MavenDependencyManager(private val cacheDir: File) {
             val nodeList = doc.getElementsByTagName("dependency")
             for (i in 0 until nodeList.length) {
                 val el = nodeList.item(i) as Element
-                deps.add(Dependency(
-                    el.getElementsByTagName("groupId").item(0).textContent,
-                    el.getElementsByTagName("artifactId").item(0).textContent,
-                    el.getElementsByTagName("version").item(0).textContent
-                ))
+                val groupId = el.getElementsByTagName("groupId").item(0)?.textContent ?: ""
+                val artifactId = el.getElementsByTagName("artifactId").item(0)?.textContent ?: ""
+                val version = el.getElementsByTagName("version").item(0)?.textContent ?: ""
+                deps.add(Dependency(groupId, artifactId, version))
             }
         } catch (e: Exception) {
-            // 處理 XML 解析異常，確保系統不崩潰
+            e.printStackTrace()
         }
         return deps
     }

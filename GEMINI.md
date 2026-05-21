@@ -19,6 +19,7 @@ MobileBuildEngine 是一個原生的 Android 編譯引擎，旨在繞過 Android
 
 ## 開發約定
 - **模組封裝**: 編譯邏輯位於 `com.mobilebuildengine.app.core`，UI 邏輯位於 `com.mobilebuildengine.app.ui`。
+- **Kotlin 編譯要求**: 所有專案原始碼必須優先經由 `KotlinCompilerEngine` 調用 `kotlinc` 編譯為 `.class` 文件，隨後再由 Java 相關工具鏈進行後續處理。
 - **錯誤處理**: 所有調用外部二進位的過程必須處理 `ProcessBuilder` 錯誤流與異常。
 - **權限管理**: `ToolchainManager` 確保執行權限。
 - **依賴規範**: 優先使用 `MavenDependencyManager`。

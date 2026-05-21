@@ -1,10 +1,14 @@
 package com.mobilebuildengine.app.core
 
 import java.io.File
-import java.util.concurrent.TimeUnit
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /**
- * 完整實作的 APK 打包器，將資源、DEX 與簽名進行最終封裝
+ * 實作標準的 APK 打包器，使用 Java ZipOutputStream 插入 DEX
  */
 class ApkPackager(
     private val toolchainManager: ToolchainManager,
@@ -12,16 +16,30 @@ class ApkPackager(
 ) {
 
     fun packageApk(resApk: File, classesDex: File, outputApk: File): Boolean {
-        // 使用 AAPT2 將 DEX 加入資源 APK 中
-        val aapt2 = toolchainManager.getBinaryPath("aapt2")
-        
-        // 其實際邏輯是將 dex 檔案插入到 apk 的 zip 結構中，通常使用 aapt 或直接 zip 處理
-        // 為了工業級標準，這裡使用 ProcessBuilder 調用
-        val process = ProcessBuilder(aapt2, "add", resApk.absolutePath, classesDex.absolutePath)
-            .directory(workingDir)
-            .redirectErrorStream(true)
-            .start()
+        return try {
+            ZipOutputStream(FileOutputStream(outputApk)).use { zos ->
+                // 1. 複製資源 APK 的內容
+                ZipInputStream(FileInputStream(resApk)).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        zos.putNextEntry(ZipEntry(entry.name))
+                        zis.copyTo(zos)
+                        zos.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
 
-        return process.waitFor(1, TimeUnit.MINUTES) && process.exitValue() == 0
+                // 2. 插入 classes.dex
+                zos.putNextEntry(ZipEntry("classes.dex"))
+                FileInputStream(classesDex).use { fis ->
+                    fis.copyTo(zos)
+                }
+                zos.closeEntry()
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 }
