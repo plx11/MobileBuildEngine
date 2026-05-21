@@ -1,11 +1,13 @@
 package com.mobilebuildengine.app.core
 
+import java.io.BufferedReader
 import java.io.File
-import java.io.IOException
+import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
 /**
  * KotlinCompilerEngine: 負責調用 kotlinc 完成 Kotlin 源碼編譯
+ * 實現標準 Process 調度與日誌捕獲
  */
 class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
 
@@ -29,14 +31,23 @@ class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
                 .redirectErrorStream(true)
                 .start()
 
-            val exitCode = process.waitFor(5, TimeUnit.MINUTES)
-            if (!exitCode) {
-                process.destroy()
-                return false
+            // 讀取進程輸出日誌
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                // 此處可接入 Logger，目前先忽略以確保編譯流暢
             }
 
-            process.exitValue() == 0
-        } catch (e: IOException) {
+            // 正確等待進程結束，waitFor 返回的是 boolean (是否超時)
+            val finished = process.waitFor(5, TimeUnit.MINUTES)
+            
+            if (finished && process.exitValue() == 0) {
+                true
+            } else {
+                if (!finished) process.destroyForcibly()
+                false
+            }
+        } catch (e: Exception) {
             e.printStackTrace()
             false
         }
