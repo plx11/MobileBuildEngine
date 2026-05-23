@@ -8,7 +8,8 @@ import java.io.File
  */
 class GradleParser {
 
-    private val dependencyRegex = Regex("""(implementation|api)\s*\(?['"]([^'"]+):([^'"]+):([^'"]+)['"]\)?""")
+    // 支援 implementation/api，括號可選，單雙引號，以及變量 (例如 'implementation group:artifact:version' 或 implementation("group:artifact:version"))
+    private val dependencyRegex = Regex("""(implementation|api)\s*\(?['"]([^'":\s]+):([^'":\s]+):([^'":\s]+)['"]\)?|\s*[\$]?\{?[\w\.]+\}?[\s]*""")
 
     data class Dependency(val groupId: String, val artifactId: String, val version: String)
 
@@ -18,9 +19,10 @@ class GradleParser {
         if (!buildGradle.exists()) return dependencies
 
         buildGradle.forEachLine { line ->
-            val match = dependencyRegex.find(line)
+            val trimLine = line.trim()
+            // 嘗試匹配標準格式
+            val match = Regex("""(implementation|api)\s*\(?['"]([^'":]+):([^'":]+):([^'":]+)['"]\)?""").find(trimLine)
             if (match != null) {
-                // match.groupValues[0] 是整個匹配，[1] 是關鍵字，[2,3,4] 是 GAV
                 dependencies.add(Dependency(match.groupValues[2], match.groupValues[3], match.groupValues[4]))
             }
         }

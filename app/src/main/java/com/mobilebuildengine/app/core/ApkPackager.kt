@@ -28,12 +28,14 @@ class ApkPackager(
     }
 
     fun packageApk(resApk: File, dexFiles: List<File>, outputApk: File): Boolean {
-        return try {
-            ZipOutputStream(FileOutputStream(outputApk)).use { zos ->
-                // 1. 複製資源 APK 的內容
+        val tempApk = File(outputApk.absolutePath + ".tmp")
+        val success = try {
+            ZipOutputStream(FileOutputStream(tempApk)).use { zos ->
+                // 1. 複製資源
                 ZipInputStream(FileInputStream(resApk)).use { zis ->
                     var entry = zis.nextEntry
                     while (entry != null) {
+                        // 資源保留原始壓縮格式
                         zos.putNextEntry(ZipEntry(entry.name))
                         zis.copyTo(zos)
                         zos.closeEntry()
@@ -41,12 +43,26 @@ class ApkPackager(
                     }
                 }
 
-                // 2. 插入 dex（支援多 dex）
+                // 2. 插入 dex (STORED 模式)
                 dexFiles.sortedBy { it.name }.forEach { dexFile ->
-                    zos.putNextEntry(ZipEntry(dexFile.name))
+                    val entry = ZipEntry(dexFile.name)
+                    entry.method = ZipEntry.STORED
+                    entry.size = dexFile.length()
+                    
+                    // 計算 CRC-32
+                    val crc = java.util.zip.CRC32()
                     FileInputStream(dexFile).use { fis ->
-                        fis.copyTo(zos)
+                        val buffer = ByteArray(8192)
+                        var read = fis.read(buffer)
+                        while(read != -1) {
+                            crc.update(buffer, 0, read)
+                            read = fis.read(buffer)
+                        }
                     }
+                    entry.crc = crc.value
+                    
+                    zos.putNextEntry(entry)
+                    FileInputStream(dexFile).use { it.copyTo(zos) }
                     zos.closeEntry()
                 }
             }
@@ -55,5 +71,15 @@ class ApkPackager(
             e.printStackTrace()
             false
         }
+
+        if (success) {
+            // 3. Zipalign
+            val zipalign = toolchainManager.getBinaryPath("zipalign")
+            val process = ProcessBuilder(zipalign, "-v", "4", tempApk.absolutePath, outputApk.absolutePath).start()
+            val result = process.waitFor() == 0
+            tempApk.delete()
+            return result
+        }
+        return false
     }
 }

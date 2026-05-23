@@ -292,24 +292,30 @@ class EnhancedDependencyResolver(private val cacheDir: File) {
 
     fun downloadAndExtract(group: String, artifact: String, version: String, classifier: String = ""): List<File> {
         val extractedFiles = mutableListOf<File>()
+        
+        // 快取失效邏輯：SNAPSHOT 超過 24 小時則強制重新拉取
         val resolvedVersion = resolveSnapshotVersion(group, artifact, version)
-
         val aarFile = File(cacheDir, "$artifact-$resolvedVersion.aar")
         val jarFile = File(cacheDir, "$artifact-$resolvedVersion.jar")
+        
+        val isSnapshot = version.endsWith("-SNAPSHOT")
+        val isExpired = isSnapshot && (aarFile.exists() && System.currentTimeMillis() - aarFile.lastModified() > 24 * 60 * 60 * 1000)
 
-        if (!aarFile.exists() && !jarFile.exists()) {
+        if (isExpired || (!aarFile.exists() && !jarFile.exists())) {
             val suffix = if (classifier.isBlank()) "" else "-$classifier"
             val baseUrl = "$MAVEN_URL/${group.replace(".", "/")}/$artifact/$version/$artifact-$resolvedVersion$suffix"
             if (!downloadArtifact("$baseUrl.aar", aarFile)) {
                 downloadArtifact("$baseUrl.jar", jarFile)
             }
         }
-
+        
+        // ... 原有邏輯保持不變 ...
         val targetFile = when {
             aarFile.exists() -> aarFile
             jarFile.exists() -> jarFile
             else -> null
         }
+        // ... (省略部分代碼，僅展示關鍵修改)
 
         if (targetFile != null && targetFile.exists()) {
             if (targetFile.extension == "aar") {

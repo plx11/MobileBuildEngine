@@ -12,15 +12,15 @@ import java.util.concurrent.TimeUnit
  */
 class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
 
-    fun compile(srcDir: File, outputDir: File, classPath: String): Boolean {
+    fun compile(srcDir: File, outputDir: File, classPath: String, logger: (String) -> Unit): Boolean {
         val kotlincPath = toolchainManager.getBinaryPath("kotlinc")
         if (!File(kotlincPath).exists()) {
-            System.err.println("Kotlinc binary not found: $kotlincPath")
+            logger("Kotlinc binary not found: $kotlincPath")
             return false
         }
 
         if (!srcDir.exists() || !srcDir.isDirectory) {
-            System.err.println("Kotlin source directory not found: ${srcDir.absolutePath}")
+            logger("Kotlin source directory not found: ${srcDir.absolutePath}")
             return false
         }
 
@@ -42,12 +42,10 @@ class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
                 .redirectErrorStream(true)
                 .start()
 
-            // 讀取進程輸出日誌
             val output = BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
                 reader.readText()
             }
 
-            // 正確等待進程結束，waitFor 返回的是 boolean (是否超時)
             val finished = process.waitFor(5, TimeUnit.MINUTES)
             
             if (finished && process.exitValue() == 0) {
@@ -55,12 +53,12 @@ class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
             } else {
                 if (!finished) process.destroyForcibly()
                 if (output.isNotBlank()) {
-                    System.err.println("Kotlinc Error: $output")
+                    logger(output)
                 }
                 false
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger("Compile error: ${e.message}")
             false
         }
     }
