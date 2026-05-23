@@ -44,6 +44,16 @@ class EnhancedDependencyResolver(private val cacheDir: File) {
     )
 
     fun resolveWithTransitives(group: String, artifact: String, version: String): List<File> {
+        val cacheKey = "$group:$artifact:$version"
+        val cacheFile = File(cacheDir, "${cacheKey.replace(":", "_")}.lock")
+        if (cacheFile.exists()) {
+            try {
+                val cachedPaths = cacheFile.readLines()
+                val files = cachedPaths.map { File(it) }.filter { it.exists() }
+                if (files.isNotEmpty()) return files
+            } catch (_: Exception) {}
+        }
+
         val resolvedArtifacts = mutableListOf<File>()
         val visited = mutableSetOf<String>()
         val managedVersions = mutableMapOf<String, String>()
@@ -84,7 +94,14 @@ class EnhancedDependencyResolver(private val cacheDir: File) {
         }
 
         resolveRecursive(group, artifact, version, 0, emptySet())
-        return resolvedArtifacts.distinctBy { it.absolutePath }
+        val result = resolvedArtifacts.distinctBy { it.absolutePath }
+        
+        // 寫入快取
+        try {
+            cacheFile.writeText(result.joinToString("\n") { it.absolutePath })
+        } catch (_: Exception) {}
+        
+        return result
     }
 
     fun parsePomDependencies(pomFile: File): List<Dependency> {

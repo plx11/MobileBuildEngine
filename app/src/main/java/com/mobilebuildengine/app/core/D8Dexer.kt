@@ -45,7 +45,13 @@ class D8Dexer(
             val output = process.inputStream.bufferedReader().use { it.readText() }
             val finished = process.waitFor(10, TimeUnit.MINUTES)
             
-            if (!finished || process.exitValue() != 0) {
+            if (!finished) {
+                process.destroyForcibly() // 強制終結殭屍進程
+                System.err.println("D8 Execution Timed Out!")
+                return false
+            }
+
+            if (process.exitValue() != 0) {
                 System.err.println("D8 Execution Error: $output")
                 false
             } else {

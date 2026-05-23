@@ -8,7 +8,7 @@ import java.io.File
  */
 class GradleParser {
 
-    private val dependencyRegex = Regex("""implementation\s*\(?['"]([^'"]+):([^'"]+):([^'"]+)['"]\)?""")
+    private val dependencyRegex = Regex("""(implementation|api)\s*\(?['"]([^'"]+):([^'"]+):([^'"]+)['"]\)?""")
 
     data class Dependency(val groupId: String, val artifactId: String, val version: String)
 
@@ -20,8 +20,8 @@ class GradleParser {
         buildGradle.forEachLine { line ->
             val match = dependencyRegex.find(line)
             if (match != null) {
-                val (group, artifact, version) = match.destructured
-                dependencies.add(Dependency(group, artifact, version))
+                // match.groupValues[0] 是整個匹配，[1] 是關鍵字，[2,3,4] 是 GAV
+                dependencies.add(Dependency(match.groupValues[2], match.groupValues[3], match.groupValues[4]))
             }
         }
         
