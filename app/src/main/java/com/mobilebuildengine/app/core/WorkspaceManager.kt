@@ -9,12 +9,20 @@ import java.util.UUID
 class WorkspaceManager(private val baseDir: File) {
 
     fun createWorkspace(): File {
+        if (!baseDir.exists() && !baseDir.mkdirs()) {
+            throw IllegalStateException("無法建立工作空間根目錄: ${baseDir.absolutePath}")
+        }
+
         val workspace = File(baseDir, "build_${UUID.randomUUID().toString().take(8)}")
-        if (!workspace.exists()) workspace.mkdirs()
+        if (!workspace.exists() && !workspace.mkdirs()) {
+            throw IllegalStateException("無法建立工作空間目錄: ${workspace.absolutePath}")
+        }
         return workspace
     }
 
     fun cleanWorkspace(workspace: File) {
-        workspace.deleteRecursively()
+        if (workspace.exists() && !workspace.deleteRecursively()) {
+            System.err.println("Workspace cleanup warning: ${workspace.absolutePath}")
+        }
     }
 }

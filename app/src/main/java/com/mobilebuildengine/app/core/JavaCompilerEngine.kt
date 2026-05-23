@@ -9,15 +9,27 @@ import java.io.File
  */
 class JavaCompilerEngine {
     fun compile(srcDir: File, classDir: File, classpath: String): Boolean {
+        if (!srcDir.exists() || !srcDir.isDirectory) {
+            return true
+        }
+
+        val javaSources = srcDir.walkTopDown()
+            .filter { it.isFile && it.extension == "java" }
+            .map { it.absolutePath }
+            .toList()
+
+        if (javaSources.isEmpty()) return true
+
         // -17 指定 Java 17 標準，滿足現代 Android SDK (compileSdk 35+) 的編譯需求
-        val args = arrayOf(
+        val args = mutableListOf(
             "-d", classDir.absolutePath,
             "-cp", classpath,
-            "-17", 
+            "-17",
             "-preserveState",
-            "-warn:none",
-            srcDir.absolutePath
+            "-warn:none"
         )
-        return Main.compile(args, PrintWriter(System.out), PrintWriter(System.err))
+        args.addAll(javaSources)
+
+        return Main.compile(args.toTypedArray(), PrintWriter(System.out), PrintWriter(System.err))
     }
 }

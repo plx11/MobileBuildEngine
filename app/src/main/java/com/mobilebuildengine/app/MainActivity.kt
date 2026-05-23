@@ -6,7 +6,7 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.mobilebuildengine.app.core.BuildEngineController
-import com.mobilebuildengine.app.core.ToolchainManager
+import com.mobilebuildengine.app.core.EnhancedDependencyResolver
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -27,9 +27,14 @@ class MainActivity : AppCompatActivity(), BuildEngineController.BuildLogger {
         progressBar = findViewById(R.id.progressBar)
 
         btnBuild.setOnClickListener {
-            val path = etProjectPath.text.toString()
+            val path = etProjectPath.text.toString().trim()
             if (path.isNotEmpty()) {
-                startBuild(File(path))
+                val projectDir = File(path)
+                if (!projectDir.exists() || !projectDir.isDirectory) {
+                    tvLogs.append("無效專案路徑: ${projectDir.absolutePath}\n")
+                } else {
+                    startBuild(projectDir)
+                }
             }
         }
     }
@@ -53,22 +58,36 @@ class MainActivity : AppCompatActivity(), BuildEngineController.BuildLogger {
         btnBuild.isEnabled = false // 禁用按鈕防止重複點擊
         
         thread {
-            val toolchain = ToolchainManager(this)
-            val cacheDir = File(filesDir, "maven_cache")
-            if (!cacheDir.exists()) cacheDir.mkdirs()
-            val dependencyResolver = EnhancedDependencyResolver(cacheDir)
-            
-            val controller = BuildEngineController(toolchain, dependencyResolver, this)
-            val result = controller.executeFullBuild(projectDir, "build.gradle")
-            
-            runOnUiThread {
-                progressBar.visibility = android.view.View.GONE
-                btnBuild.isEnabled = true // 恢復按鈕
-                when (result) {
-                    is BuildEngineController.BuildResult.Success -> 
-                        tvLogs.append("編譯成功: ${result.apkFile.absolutePath}\n")
-                    is BuildEngineController.BuildResult.Failure -> 
-                        tvLogs.append("編譯失敗: ${result.message}\n")
+            try {
+                val toolchain = ToolchainManager(this)
+                val cacheDir = File(filesDir, "maven_cache")
+                if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+                    throw IllegalStateException("無法建立快取目錄: ${cacheDir.absolutePath}")
+                }
+                val dependencyResolver = EnhancedDependencyResolver(cacheDir)
+
+                val controller = BuildEngineController(toolchain, dependencyResolver, this)
+                val buildScriptContent = listOf(
+                    File(projectDir, "build.gradle"),
+                    File(projectDir, "app/build.gradle")
+                ).firstOrNull { it.exists() }?.readText().orEmpty()
+                val result = controller.executeFullBuild(projectDir, buildScriptContent)
+
+                runOnUiThread {
+                    progressBar.visibility = android.view.View.GONE
+                    btnBuild.isEnabled = true // 恢復按鈕
+                    when (result) {
+                        is BuildEngineController.BuildResult.Success ->
+                            tvLogs.append("編譯成功: ${result.apkFile.absolutePath}\n")
+                        is BuildEngineController.BuildResult.Failure ->
+                            tvLogs.append("編譯失敗: ${result.message}\n")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progressBar.visibility = android.view.View.GONE
+                    btnBuild.isEnabled = true
+                    tvLogs.append("編譯異常: ${e.message}\n")
                 }
             }
         }
