@@ -1,11 +1,11 @@
 package com.mobilebuildengine.app.core
 
+import com.mobilebuildengine.app.ToolchainManager
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * 完整實作的 AAPT2 資源編譯器，執行真實的二進位調用
+ * AAPT2 資源編譯器，執行二進位調用
  */
 class ResourceCompiler(
     private val toolchain: ToolchainManager,
@@ -24,7 +24,11 @@ class ResourceCompiler(
             aapt2, "compile", "--dir", resDir.absolutePath, "-o", flatDir.absolutePath
         ).directory(workingDir).redirectErrorStream(true).start()
         
-        if (compileProcess.waitFor() != 0) return false
+        val compileOutput = compileProcess.inputStream.bufferedReader().use { it.readText() }
+        if (!(compileProcess.waitFor(2, TimeUnit.MINUTES) && compileProcess.exitValue() == 0)) {
+            System.err.println("AAPT2 Compile Error: $compileOutput")
+            return false
+        }
 
         // 2. AAPT2 Link: 合併資源並產生 APK
         val flatFiles = flatDir.listFiles { _, name -> name.endsWith(".flat") }?.map { it.absolutePath } ?: emptyList()
@@ -48,7 +52,18 @@ class ResourceCompiler(
         val alignProcess = ProcessBuilder(
             zipalign, "-p", "-f", "4", outputApk.absolutePath, alignedApk.absolutePath
         ).directory(workingDir).redirectErrorStream(true).start()
-        
-        return alignProcess.waitFor() == 0 && alignedApk.renameTo(outputApk)
+        val alignOutput = alignProcess.inputStream.bufferedReader().use { it.readText() }
+
+        if (!(alignProcess.waitFor(2, TimeUnit.MINUTES) && alignProcess.exitValue() == 0)) {
+            System.err.println("Zipalign Error: $alignOutput")
+            return false
+        }
+
+        if (!alignedApk.renameTo(outputApk)) {
+            System.err.println("Zipalign Error: 無法覆蓋輸出 APK")
+            return false
+        }
+
+        true
     }
 }

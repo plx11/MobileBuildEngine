@@ -1,5 +1,6 @@
 package com.mobilebuildengine.app.core
 
+import com.mobilebuildengine.app.ToolchainManager
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -13,7 +14,17 @@ class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
 
     fun compile(srcDir: File, outputDir: File, classPath: String): Boolean {
         val kotlincPath = toolchainManager.getBinaryPath("kotlinc")
-        val kotlinFiles = srcDir.walkTopDown().filter { it.extension == "kt" }.map { it.absolutePath }.toList()
+        if (!File(kotlincPath).exists()) {
+            System.err.println("Kotlinc binary not found: $kotlincPath")
+            return false
+        }
+
+        if (!srcDir.exists() || !srcDir.isDirectory) {
+            System.err.println("Kotlin source directory not found: ${srcDir.absolutePath}")
+            return false
+        }
+
+        val kotlinFiles = srcDir.walkTopDown().filter { it.isFile && it.extension == "kt" }.map { it.absolutePath }.toList()
 
         if (kotlinFiles.isEmpty()) return true
 
@@ -32,10 +43,8 @@ class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
                 .start()
 
             // 讀取進程輸出日誌
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                // 此處可接入 Logger，目前先忽略以確保編譯流暢
+            val output = BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+                reader.readText()
             }
 
             // 正確等待進程結束，waitFor 返回的是 boolean (是否超時)
@@ -45,6 +54,9 @@ class KotlinCompilerEngine(private val toolchainManager: ToolchainManager) {
                 true
             } else {
                 if (!finished) process.destroyForcibly()
+                if (output.isNotBlank()) {
+                    System.err.println("Kotlinc Error: $output")
+                }
                 false
             }
         } catch (e: Exception) {

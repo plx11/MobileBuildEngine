@@ -1,10 +1,11 @@
 package com.mobilebuildengine.app.core
 
+import com.mobilebuildengine.app.ToolchainManager
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * 完整實作的 D8 字節碼轉碼器，調用真實 D8 二進位檔
+ * D8 字節碼轉碼器，調用 D8 二進位檔
  */
 class D8Dexer(
     private val toolchainManager: ToolchainManager,
@@ -13,7 +14,10 @@ class D8Dexer(
 
     fun dex(classFilesDir: File, outputDexDir: File, dependencies: List<File>): Boolean {
         val d8Path = toolchainManager.getBinaryPath("d8")
-        if (!File(d8Path).exists()) return false
+        if (!File(d8Path).exists()) {
+            System.err.println("D8 binary not found: $d8Path")
+            return false
+        }
         
         val cmd = mutableListOf(d8Path)
         

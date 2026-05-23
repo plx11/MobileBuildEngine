@@ -1,5 +1,6 @@
 package com.mobilebuildengine.app.core
 
+import com.mobilebuildengine.app.ToolchainManager
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -20,6 +21,10 @@ class SigningProcessor(
         }
         
         val apksignerPath = toolchainManager.getBinaryPath("apksigner")
+        if (!File(apksignerPath).exists()) {
+            println("簽名失敗: apksigner 不存在: $apksignerPath")
+            return false
+        }
         val cmd = mutableListOf(
             apksignerPath, "sign",
             "--out", signedApk.absolutePath,
