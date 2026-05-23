@@ -69,12 +69,12 @@ class BuildEngineController(
             // 編譯 Kotlin（優先 app/src/main/kotlin，回退 app/src/main/java）
             val kotlinCompileDir = if (kotlinSrcDir.exists()) kotlinSrcDir else javaSrcDir
             val kotlinEngine = KotlinCompilerEngine(toolchainManager)
-            if (!kotlinEngine.compile(kotlinCompileDir, classDir, classPath)) {
+            if (!kotlinEngine.compile(kotlinCompileDir, classDir, classPath) { logger?.onLog(it) }) {
                 return BuildResult.Failure("Kotlin 編譯失敗")
             }
 
             // 編譯 Java（僅針對 app/src/main/java）
-            if (!JavaCompilerEngine().compile(javaSrcDir, classDir, classPath)) {
+            if (!JavaCompilerEngine().compile(javaSrcDir, classDir, classPath) { logger?.onLog(it) }) {
                 return BuildResult.Failure("Java 編譯失敗")
             }
 
